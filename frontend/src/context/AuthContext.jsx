@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { applyTheme, getSettings } from '../utils/preferences';
 
 const AuthContext = createContext(null);
 
@@ -9,11 +10,36 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const stored = localStorage.getItem('user');
-    if (stored) {
-      setUser(JSON.parse(stored));
-    }
-    setLoading(false);
+    const initializeAuth = async () => {
+      applyTheme(getSettings().theme);
+
+      const token = localStorage.getItem('token');
+      const stored = localStorage.getItem('user');
+
+      if (stored) {
+        try {
+          setUser(JSON.parse(stored));
+        } catch {
+          localStorage.removeItem('user');
+        }
+      }
+
+      if (token) {
+        try {
+          const response = await api.get('/users/me');
+          localStorage.setItem('user', JSON.stringify(response.data));
+          setUser(response.data);
+        } catch {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+          setUser(null);
+        }
+      }
+
+      setLoading(false);
+    };
+
+    initializeAuth();
   }, []);
 
   const login = async (email, password) => {
@@ -41,8 +67,52 @@ export function AuthProvider({ children }) {
     toast.success('Logged out');
   };
 
+  const updateLocalProfile = (updates) => {
+    setUser((current) => {
+      if (!current) {
+        return current;
+      }
+
+      const nextUser = {
+        ...current,
+        ...updates,
+      };
+
+      localStorage.setItem('user', JSON.stringify(nextUser));
+      return nextUser;
+    });
+    toast.success('Profile preferences saved');
+  };
+
+  const updateProfile = async (updates) => {
+    const response = await api.put('/users/me', updates);
+    localStorage.setItem('user', JSON.stringify(response.data));
+    setUser(response.data);
+    toast.success('Profile updated');
+    return response.data;
+  };
+
+  const changePassword = async (currentPassword, newPassword) => {
+    await api.put('/users/me/password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+    toast.success('Password updated');
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        login,
+        register,
+        logout,
+        loading,
+        updateLocalProfile,
+        updateProfile,
+        changePassword,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

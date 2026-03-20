@@ -14,6 +14,11 @@ export const CATEGORIES = [
   { value: 'other', label: 'Other', color: '#6b7280' },
 ];
 
+export const INCOME_CATEGORY_VALUES = ['salary', 'freelance', 'investment', 'other'];
+export const EXPENSE_CATEGORY_VALUES = CATEGORIES.filter(
+  (category) => !INCOME_CATEGORY_VALUES.includes(category.value)
+).map((category) => category.value);
+
 export const CATEGORY_MAP = Object.fromEntries(
   CATEGORIES.map((c) => [c.value, c])
 );

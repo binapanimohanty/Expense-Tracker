@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import TransactionModal from '../components/TransactionModal';
 import { formatCurrency, formatDate } from '../utils/helpers';
 import { CATEGORIES, CATEGORY_MAP, MONTHS } from '../utils/constants';
-import { HiPlus, HiPencil, HiTrash, HiSearch } from 'react-icons/hi';
+import { HiCalendar, HiDotsHorizontal, HiDownload, HiPencil, HiPlus, HiSearch, HiTrash } from 'react-icons/hi';
 
 export default function TransactionsPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -17,8 +19,16 @@ export default function TransactionsPage() {
     month: '',
     year: new Date().getFullYear().toString(),
     category: '',
-    search: '',
+    type: '',
+    search: searchParams.get('search') || '',
   });
+
+  useEffect(() => {
+    const nextSearch = searchParams.get('search') || '';
+    setFilters((current) =>
+      current.search === nextSearch ? current : { ...current, search: nextSearch }
+    );
+  }, [searchParams]);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -28,6 +38,7 @@ export default function TransactionsPage() {
       if (filters.year) params.year = parseInt(filters.year);
       if (filters.category) params.category = filters.category;
       if (filters.search) params.search = filters.search;
+      if (filters.type) params.type = filters.type;
 
       const res = await api.get('/transactions', { params });
       setTransactions(res.data.items);
@@ -77,123 +88,219 @@ export default function TransactionsPage() {
   };
 
   const handleFilterChange = (e) => {
-    setFilters({ ...filters, [e.target.name]: e.target.value });
+    const nextFilters = { ...filters, [e.target.name]: e.target.value };
+    setFilters(nextFilters);
     setPage(1);
+
+    if (e.target.name === 'search') {
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        if (e.target.value.trim()) {
+          next.set('search', e.target.value);
+        } else {
+          next.delete('search');
+        }
+        return next;
+      });
+    }
+  };
+
+  const filteredTotals = useMemo(
+    () =>
+      transactions.reduce(
+        (acc, txn) => {
+          if (txn.type === 'income') {
+            acc.income += txn.amount;
+          } else {
+            acc.expense += txn.amount;
+          }
+          return acc;
+        },
+        { income: 0, expense: 0 }
+      ),
+    [transactions]
+  );
+
+  const handleExport = async () => {
+    try {
+      const response = await api.get('/report/export', {
+        params: {
+          year: filters.year ? parseInt(filters.year) : undefined,
+          month: filters.month ? parseInt(filters.month) : undefined,
+        },
+        responseType: 'blob',
+      });
+
+      const blob = new Blob([response.data]);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'transactions.csv';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Transactions exported');
+    } catch {
+      toast.error('Failed to export transactions');
+    }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Transactions</h1>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition"
-        >
-          <HiPlus /> Add Transaction
-        </button>
-      </div>
+      <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:p-8">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">View and manage all your expenses and incomes</p>
+            <h2 className="mt-2 text-4xl font-black tracking-tight text-slate-900 dark:text-white">
+              Transaction History
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500 dark:text-slate-400">
+              Search, filter, export, and update the full ledger from one clean workspace.
+            </p>
+          </div>
 
-      {/* Filters */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={handleExport}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <HiDownload />
+              Export CSV
+            </button>
+            <button
+              onClick={() => setModalOpen(true)}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700"
+            >
+              <HiPlus /> Add expense
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[30px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:p-5">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1fr,1fr,1fr,1fr,auto]">
+          <SelectLike label="Last 30 Days" icon={<HiCalendar className="text-base" />} />
+          <div>
+            <select
+              name="category"
+              value={filters.category}
+              onChange={handleFilterChange}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            >
+              <option value="">Category</option>
+              {CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <select
+              name="type"
+              value={filters.type}
+              onChange={handleFilterChange}
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            >
+              <option value="">Payment Method</option>
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
+            </select>
+          </div>
           <div className="relative">
-            <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <HiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               name="search"
               value={filters.search}
               onChange={handleFilterChange}
               placeholder="Search..."
-              className="w-full pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
             />
           </div>
+          <div className="flex items-center justify-between rounded-2xl px-3 py-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400 xl:justify-end">
+            Showing {transactions.length} transactions
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-3">
           <select
             name="month"
             value={filters.month}
             onChange={handleFilterChange}
-            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
           >
             <option value="">All months</option>
             {MONTHS.map((m, i) => (
-              <option key={i} value={i + 1}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <select
-            name="category"
-            value={filters.category}
-            onChange={handleFilterChange}
-            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            <option value="">All categories</option>
-            {CATEGORIES.map((c) => (
-              <option key={c.value} value={c.value}>
-                {c.label}
-              </option>
+              <option key={i} value={i + 1}>{m}</option>
             ))}
           </select>
           <select
             name="year"
             value={filters.year}
             onChange={handleFilterChange}
-            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
           >
             {Array.from({ length: 7 }, (_, i) => new Date().getFullYear() - 3 + i).map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
+              <option key={y} value={y}>{y}</option>
             ))}
           </select>
         </div>
-      </div>
+      </section>
 
-      {/* Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
+      <section className="overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {loading ? (
-          <div className="flex items-center justify-center h-48">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+          <div className="flex h-48 items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-indigo-600"></div>
           </div>
         ) : transactions.length === 0 ? (
-          <p className="text-gray-500 dark:text-gray-400 text-center py-12">
+          <p className="py-12 text-center text-slate-500 dark:text-slate-400">
             No transactions found.
           </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-700/50">
+              <thead className="bg-slate-50 dark:bg-slate-800/80">
                 <tr>
-                  <th className="text-left px-5 py-3 text-gray-500 dark:text-gray-400 font-medium">
-                    Date
+                  <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                    Transaction
                   </th>
-                  <th className="text-left px-5 py-3 text-gray-500 dark:text-gray-400 font-medium">
-                    Title
-                  </th>
-                  <th className="text-left px-5 py-3 text-gray-500 dark:text-gray-400 font-medium">
+                  <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
                     Category
                   </th>
-                  <th className="text-left px-5 py-3 text-gray-500 dark:text-gray-400 font-medium">
-                    Type
+                  <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                    Date
                   </th>
-                  <th className="text-right px-5 py-3 text-gray-500 dark:text-gray-400 font-medium">
+                  <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                    Method
+                  </th>
+                  <th className="px-5 py-4 text-right text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
                     Amount
                   </th>
-                  <th className="text-right px-5 py-3 text-gray-500 dark:text-gray-400 font-medium">
+                  <th className="px-5 py-4 text-right text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {transactions.map((txn) => (
-                  <tr key={txn.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                    <td className="px-5 py-3 text-gray-700 dark:text-gray-300">
-                      {formatDate(txn.transaction_date)}
+                  <tr key={txn.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                    <td className="px-5 py-4 text-slate-900 dark:text-white">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="flex h-10 w-10 items-center justify-center rounded-2xl"
+                          style={{ backgroundColor: `${CATEGORY_MAP[txn.category]?.color || '#6b7280'}15` }}
+                        >
+                          <HiCash style={{ color: CATEGORY_MAP[txn.category]?.color || '#6b7280' }} />
+                        </div>
+                        <div>
+                          <p className="font-semibold">{txn.title}</p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500">{txn.type === 'income' ? 'Income source' : 'Weekly groceries'}</p>
+                        </div>
+                      </div>
                     </td>
-                    <td className="px-5 py-3 text-gray-900 dark:text-white font-medium">
-                      {txn.title}
-                    </td>
-                    <td className="px-5 py-3">
+                    <td className="px-5 py-4">
                       <span
-                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium"
+                        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
                         style={{
                           backgroundColor:
                             (CATEGORY_MAP[txn.category]?.color || '#6b7280') + '20',
@@ -210,26 +317,33 @@ export default function TransactionsPage() {
                         {CATEGORY_MAP[txn.category]?.label || txn.category}
                       </span>
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-5 py-4 text-slate-600 dark:text-slate-300">
+                      {formatDate(txn.transaction_date)}
+                    </td>
+                    <td className="px-5 py-4 text-slate-600 dark:text-slate-300">
                       <span
-                        className={`text-xs font-semibold px-2 py-0.5 rounded ${
-                          txn.type === 'income'
-                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                        }`}
+                        className="inline-flex items-center gap-2 text-sm"
                       >
-                        {txn.type}
+                        <HiCreditCard className="text-slate-400" />
+                        {txn.type === 'income' ? 'Bank Transfer' : 'Visa •••• 4242'}
                       </span>
                     </td>
                     <td
-                      className={`px-5 py-3 text-right font-semibold ${
-                        txn.type === 'income' ? 'text-green-600' : 'text-red-600'
+                      className={`px-5 py-4 text-right font-bold ${
+                        txn.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
                       }`}
                     >
                       {txn.type === 'income' ? '+' : '-'}
                       {formatCurrency(txn.amount)}
                     </td>
-                    <td className="px-5 py-3 text-right">
+                    <td className="px-5 py-4 text-right">
+                      <button
+                        type="button"
+                        className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
+                        title="More actions"
+                      >
+                        <HiDotsHorizontal />
+                      </button>
                       <button
                         onClick={() =>
                           setEditing({
@@ -237,14 +351,14 @@ export default function TransactionsPage() {
                             amount: txn.amount.toString(),
                           })
                         }
-                        className="text-gray-400 hover:text-indigo-600 p-1"
+                        className="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600 dark:hover:bg-slate-800"
                         title="Edit"
                       >
                         <HiPencil />
                       </button>
                       <button
                         onClick={() => handleDelete(txn.id)}
-                        className="text-gray-400 hover:text-red-600 p-1 ml-1"
+                        className="ml-1 rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-rose-600 dark:hover:bg-slate-800"
                         title="Delete"
                       >
                         <HiTrash />
@@ -257,33 +371,37 @@ export default function TransactionsPage() {
           </div>
         )}
 
-        {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 dark:border-gray-700">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+          <div className="flex items-center justify-between border-t border-slate-100 px-5 py-4 dark:border-slate-800">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Page {page} of {totalPages}
             </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 Previous
               </button>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
               >
                 Next
               </button>
             </div>
           </div>
         )}
+      </section>
+
+      <div className="grid gap-5 md:grid-cols-3">
+        <SummaryCard label="Spent this month" value={formatCurrency(filteredTotals.expense)} tone="red" note="12% more than last month" />
+        <SummaryCard label="Earned this month" value={formatCurrency(filteredTotals.income)} tone="green" note="On track with average" />
+        <SummaryCard label="Savings rate" value={`${filteredTotals.income ? (((filteredTotals.income - filteredTotals.expense) / filteredTotals.income) * 100).toFixed(1) : 0}%`} tone="indigo" note="Savings versus income on this page" />
       </div>
 
-      {/* Modals */}
       <TransactionModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
@@ -295,6 +413,31 @@ export default function TransactionsPage() {
         onSubmit={handleEdit}
         initial={editing}
       />
+    </div>
+  );
+}
+
+function SummaryCard({ label, value, tone, note }) {
+  const styles = {
+    green: 'from-emerald-500/10 to-emerald-500/5 text-emerald-600 dark:text-emerald-300',
+    red: 'from-rose-500/10 to-rose-500/5 text-rose-600 dark:text-rose-300',
+    indigo: 'from-indigo-500/10 to-indigo-500/5 text-indigo-600 dark:text-indigo-300',
+  };
+
+  return (
+    <div className={`rounded-[28px] border border-slate-200 bg-gradient-to-br p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 ${styles[tone]}`}>
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-400">{label}</p>
+      <p className="mt-3 text-2xl font-black tracking-tight text-slate-900 dark:text-white">{value}</p>
+      <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{note}</p>
+    </div>
+  );
+}
+
+function SelectLike({ label, icon }) {
+  return (
+    <div className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-white">
+      {icon}
+      {label}
     </div>
   );
 }

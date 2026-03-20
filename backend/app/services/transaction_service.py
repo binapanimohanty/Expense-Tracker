@@ -7,7 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, extract
 from sqlalchemy.orm import Session
 
-from app.models.transaction import Transaction
+from app.models import Transaction
 from app.schemas.transaction import (
     TransactionCreate,
     TransactionUpdate,
