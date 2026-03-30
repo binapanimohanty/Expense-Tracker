@@ -5,6 +5,7 @@ export const DEFAULT_SETTINGS = {
   theme: 'light',
   currency: 'USD',
   monthlyBudget: 2000,
+  categoryBudgets: {},
 };
 
 export function getSettings() {

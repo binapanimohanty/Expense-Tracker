@@ -15,12 +15,15 @@ export default function BudgetPage() {
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState(() => getSettings());
   const [budgetInput, setBudgetInput] = useState(() => String(getSettings().monthlyBudget));
+  const [categoryBudgets, setCategoryBudgets] = useState(() => getSettings().categoryBudgets || {});
+  const [categoryBudgetInputs, setCategoryBudgetInputs] = useState({});
 
   useEffect(() => {
     const syncSettings = () => {
       const nextSettings = getSettings();
       setSettings(nextSettings);
       setBudgetInput(String(nextSettings.monthlyBudget));
+      setCategoryBudgets(nextSettings.categoryBudgets || {});
     };
 
     window.addEventListener(SETTINGS_CHANGED_EVENT, syncSettings);
@@ -102,6 +105,24 @@ export default function BudgetPage() {
     const next = saveSettings({ monthlyBudget: value });
     setSettings(next);
     toast.success('Monthly budget updated');
+  };
+
+  const handleCategoryBudgetSave = (category) => {
+    const raw = categoryBudgetInputs[category];
+    const value = Number(raw);
+    if (raw === undefined || raw === '' || !Number.isFinite(value) || value < 0) {
+      toast.error('Enter a valid budget amount');
+      return;
+    }
+    const nextBudgets = { ...categoryBudgets, [category]: value };
+    saveSettings({ categoryBudgets: nextBudgets });
+    setCategoryBudgets(nextBudgets);
+    setCategoryBudgetInputs((prev) => {
+      const updated = { ...prev };
+      delete updated[category];
+      return updated;
+    });
+    toast.success(`Budget for ${CATEGORY_MAP[category]?.label || category} saved`);
   };
 
   if (loading) {
@@ -236,17 +257,56 @@ export default function BudgetPage() {
                 topCategories.slice(0, 5).map((item) => {
                   const share = spent ? (item.total / spent) * 100 : 0;
                   const category = CATEGORY_MAP[item.category];
+                  const catBudget = Number(categoryBudgets[item.category] || 0);
+                  const overBudget = catBudget > 0 && item.total > catBudget;
+                  const catProgress = catBudget > 0
+                    ? Math.min((item.total / catBudget) * 100, 100)
+                    : Math.min(share, 100);
+                  const inputVal = categoryBudgetInputs[item.category] ?? (catBudget > 0 ? String(catBudget) : '');
+
                   return (
                     <div key={item.category} className="space-y-2">
                       <div className="flex items-center justify-between gap-3 text-sm">
                         <div className="flex items-center gap-3">
                           <span className="h-3 w-3 rounded-full" style={{ backgroundColor: category?.color || '#64748b' }} />
                           <span className="font-semibold text-slate-700 dark:text-slate-200">{category?.label || item.category}</span>
+                          {overBudget && (
+                            <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-600 dark:bg-rose-500/20 dark:text-rose-400">Over budget</span>
+                          )}
                         </div>
-                        <span className="text-slate-500 dark:text-slate-400">{formatCurrency(item.total)} · {share.toFixed(0)}%</span>
+                        <span className="text-slate-500 dark:text-slate-400">
+                          {formatCurrency(item.total)}
+                          {catBudget > 0 ? ` / ${formatCurrency(catBudget)}` : ` · ${share.toFixed(0)}%`}
+                        </span>
                       </div>
                       <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-                        <div className="h-full rounded-full" style={{ width: `${Math.min(share, 100)}%`, backgroundColor: category?.color || '#64748b' }} />
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${catProgress}%`,
+                            backgroundColor: overBudget ? '#ef4444' : (category?.color || '#64748b'),
+                          }}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="Set limit..."
+                          value={inputVal}
+                          onChange={(e) =>
+                            setCategoryBudgetInputs((prev) => ({ ...prev, [item.category]: e.target.value }))
+                          }
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleCategoryBudgetSave(item.category)}
+                          className="shrink-0 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-indigo-700"
+                        >
+                          Set
+                        </button>
                       </div>
                     </div>
                   );

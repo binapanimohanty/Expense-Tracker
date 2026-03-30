@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, String, Float, DateTime, ForeignKey, Date
+from sqlalchemy import Boolean, Column, String, Float, DateTime, ForeignKey, Date
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -18,6 +18,8 @@ class Transaction(Base):
     type = Column(String(10), nullable=False)  # "income" or "expense"
     category = Column(String(50), nullable=False)
     transaction_date = Column(Date, nullable=False)
+    is_recurring = Column(Boolean, nullable=False, default=False, server_default="false")
+    recurrence = Column(String(20), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     user = relationship("User", back_populates="transactions")
