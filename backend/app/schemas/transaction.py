@@ -13,12 +13,17 @@ VALID_CATEGORIES = {
 }
 
 
+VALID_RECURRENCES = {"daily", "weekly", "monthly", "yearly"}
+
+
 class TransactionCreate(BaseModel):
     title: str
     amount: float
     type: str
     category: str
     transaction_date: date
+    is_recurring: bool = False
+    recurrence: Optional[str] = None
 
     @field_validator("type")
     @classmethod
@@ -43,6 +48,13 @@ class TransactionCreate(BaseModel):
             raise ValueError("amount must be positive")
         return v
 
+    @field_validator("recurrence")
+    @classmethod
+    def validate_recurrence(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_RECURRENCES:
+            raise ValueError(f"recurrence must be one of {VALID_RECURRENCES}")
+        return v
+
 
 class TransactionUpdate(BaseModel):
     title: Optional[str] = None
@@ -50,6 +62,8 @@ class TransactionUpdate(BaseModel):
     type: Optional[str] = None
     category: Optional[str] = None
     transaction_date: Optional[date] = None
+    is_recurring: Optional[bool] = None
+    recurrence: Optional[str] = None
 
     @field_validator("type")
     @classmethod
@@ -78,6 +92,13 @@ class TransactionUpdate(BaseModel):
             raise ValueError("amount must be positive")
         return v
 
+    @field_validator("recurrence")
+    @classmethod
+    def validate_recurrence(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_RECURRENCES:
+            raise ValueError(f"recurrence must be one of {VALID_RECURRENCES}")
+        return v
+
 
 class TransactionResponse(BaseModel):
     id: UUID
@@ -87,6 +108,8 @@ class TransactionResponse(BaseModel):
     type: str
     category: str
     transaction_date: date
+    is_recurring: bool
+    recurrence: Optional[str]
     created_at: datetime
 
     model_config = {"from_attributes": True}

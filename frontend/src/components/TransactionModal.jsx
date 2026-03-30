@@ -18,6 +18,8 @@ function buildInitialForm(initial, defaultType) {
     category: initial?.category || (defaultType === 'income' ? 'salary' : 'food'),
     transaction_date:
       initial?.transaction_date || new Date().toISOString().split('T')[0],
+    is_recurring: initial?.is_recurring || false,
+    recurrence: initial?.recurrence || 'monthly',
     payment_method: 'card',
     notes: '',
     receipt_name: '',
@@ -72,6 +74,8 @@ export default function TransactionModal({
       type: form.type,
       category: form.category,
       transaction_date: form.transaction_date,
+      is_recurring: form.is_recurring,
+      recurrence: form.is_recurring ? form.recurrence : null,
     });
   };
 
@@ -276,6 +280,38 @@ export default function TransactionModal({
               </label>
             </>
           ) : null}
+
+          <div className="rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+            <label className="flex cursor-pointer items-center gap-3">
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  checked={form.is_recurring}
+                  onChange={(e) => setForm((prev) => ({ ...prev, is_recurring: e.target.checked }))}
+                  className="peer sr-only"
+                />
+                <div className="h-5 w-9 rounded-full bg-slate-200 transition peer-checked:bg-indigo-600 dark:bg-slate-700" />
+                <div className="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-4" />
+              </div>
+              <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Recurring transaction</span>
+            </label>
+            {form.is_recurring && (
+              <div className="mt-3">
+                <label className="mb-1.5 block text-xs font-semibold text-slate-500 dark:text-slate-400">Frequency</label>
+                <select
+                  name="recurrence"
+                  value={form.recurrence}
+                  onChange={handleChange}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/20 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+            )}
+          </div>
 
           <div className="flex gap-3 pt-3">
             <button

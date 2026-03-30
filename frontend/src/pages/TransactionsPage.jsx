@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import TransactionModal from '../components/TransactionModal';
 import { formatCurrency, formatDate } from '../utils/helpers';
 import { CATEGORIES, CATEGORY_MAP, MONTHS } from '../utils/constants';
-import { HiCalendar, HiDotsHorizontal, HiDownload, HiPencil, HiPlus, HiSearch, HiTrash } from 'react-icons/hi';
+import { HiCalendar, HiDotsHorizontal, HiDownload, HiPencil, HiPlus, HiSearch, HiTrash, HiUpload } from 'react-icons/hi';
 
 export default function TransactionsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -15,6 +15,7 @@ export default function TransactionsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
+  const importRef = useRef(null);
   const [filters, setFilters] = useState({
     month: '',
     year: new Date().getFullYear().toString(),
@@ -146,6 +147,28 @@ export default function TransactionsPage() {
     }
   };
 
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await api.post('/report/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      toast.success(`Imported ${res.data.imported} transaction${res.data.imported !== 1 ? 's' : ''}`);
+      if (res.data.errors.length > 0) {
+        toast.error(`${res.data.errors.length} row${res.data.errors.length !== 1 ? 's' : ''} had errors`);
+      }
+      fetchTransactions();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Import failed');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <section className="rounded-[30px] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 lg:p-8">
@@ -161,6 +184,21 @@ export default function TransactionsPage() {
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
+            <input
+              ref={importRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={handleImport}
+            />
+            <button
+              type="button"
+              onClick={() => importRef.current?.click()}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              <HiUpload />
+              Import CSV
+            </button>
             <button
               type="button"
               onClick={handleExport}
@@ -294,7 +332,14 @@ export default function TransactionsPage() {
                         </div>
                         <div>
                           <p className="font-semibold">{txn.title}</p>
-                          <p className="text-xs text-slate-400 dark:text-slate-500">{txn.type === 'income' ? 'Income source' : 'Weekly groceries'}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-xs text-slate-400 dark:text-slate-500">{txn.type === 'income' ? 'Income source' : 'Expense'}</p>
+                            {txn.is_recurring && (
+                              <span className="rounded-full bg-indigo-100 px-1.5 py-0.5 text-xs font-bold capitalize text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300">
+                                {txn.recurrence}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>
